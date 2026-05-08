@@ -20,6 +20,7 @@
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg-main); color: var(--text-main); line-height: 1.5; padding: 20px; }
     .container { max-width: 900px; margin: 0 auto; }
     h1 { font-size: 24px; font-weight: 600; margin-bottom: 20px; text-align: center; }
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 15px; color: #fff; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
     .control-panel { background: var(--bg-card); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
     textarea { width: 100%; height: 100px; background: #000; border: 1px solid var(--border); color: #fff; padding: 12px; font-family: monospace; font-size: 13px; border-radius: 4px; resize: vertical; margin-bottom: 15px; }
     .options { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; }
@@ -37,7 +38,7 @@
     
     .log-box { font-size: 13px; color: var(--text-sub); margin-bottom: 20px; text-align: center; }
     
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 15px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; margin-bottom: 30px; }
     .item-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
     .item-header { display: flex; justify-content: space-between; align-items: flex-start; }
     .item-title { font-size: 16px; font-weight: 600; color: #fbbf24; line-height: 1.3;}
@@ -45,7 +46,15 @@
     .item-mods { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px; border-top: 1px solid var(--border); padding-top: 12px; }
     .mod-line { color: #e2e8f0; display: flex; align-items: flex-start; gap: 6px; }
     .mod-line::before { content: "✓"; color: var(--success); font-weight: bold; }
+    
+    /* Gem Card Styles */
+    .gem-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+    .gem-info { display: flex; flex-direction: column; gap: 4px; }
+    .gem-name { font-size: 15px; font-weight: 600; color: #38bdf8; }
+    .gem-stats { font-size: 12px; color: var(--text-sub); display: flex; gap: 10px; }
+    
     .btn-trade { display: inline-block; text-align: center; background: #252830; border: 1px solid #475569; color: #f8fafc; text-decoration: none; padding: 8px; border-radius: 4px; font-size: 13px; font-weight: 600; transition: all 0.2s; margin-top: 8px; }
+    .gem-card .btn-trade { margin-top: 0; padding: 6px 12px; }
     .btn-trade:hover { background: #334155; border-color: #94a3b8; }
     
     .footer { text-align: center; margin-top: 40px; font-size: 12px; color: var(--text-sub); }
@@ -88,7 +97,12 @@
     </div>
 
     <div id="logMsg" class="log-box"></div>
+    
+    <h2 id="itemTitle" style="display:none;">장착 중인 장비</h2>
     <div id="resultGrid" class="grid"></div>
+    
+    <h2 id="gemTitle" style="display:none;">장착 중인 스킬 젬</h2>
+    <div id="gemGrid" class="grid"></div>
     
     <div class="footer">
         Powered by <a href="https://github.com/SnosMe/awakened-poe-trade" target="_blank">Awakened PoE Trade</a> Database<br>
@@ -99,7 +113,7 @@
 <script>
 let DB = new Map();
 
-// --- 텍스트 정규화 (파이썬 로직과 100% 동일) ---
+// --- 텍스트 정규화 ---
 function normalizeText(text) {
     let t = text.replace(/\(\d+(?:\.\d+)?-\d+(?:\.\d+)?\)/g, '#');
     t = t.replace(/\d+(?:\.\d+)?/g, '#');
@@ -114,7 +128,6 @@ async function loadDB() {
     const btn = document.getElementById('runBtn');
     
     try {
-        // apt_stats.json 파일을 가져옵니다. (GitHub Pages에 올리면 여기서 에러 안 남)
         const response = await fetch('apt_stats.json');
         if (!response.ok) throw new Error('파일을 찾을 수 없습니다.');
         
@@ -182,7 +195,7 @@ async function decodePOB(str) {
     throw new Error("POB 코드 압축 해제에 실패했습니다.");
 }
 
-// --- 개별 옵션 파싱 ---
+// --- 개별 장비 옵션 파싱 ---
 function parseItemLine(line, isImplicitSection) {
     let modType = "explicit";
     const lowerLine = line.toLowerCase();
@@ -205,80 +218,104 @@ function parseItemLine(line, isImplicitSection) {
     const values = matches ? matches.map(Number) : [];
     
     const normalized = normalizeText(cleanLine);
-    
     return { original: line, cleanOriginal: cleanLine, normalized, type: modType, values };
 }
 
-// --- XML 아이템 분석 및 매칭 ---
-function analyzeItems(xmlString) {
+// --- XML 분석 로직 (착용템 필터링 + 젬 추출 통합) ---
+function analyzePOBData(xmlString) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlString, "text/xml");
-    const itemsNode = doc.querySelector("Items");
-    if (!itemsNode) throw new Error("아이템 정보를 찾을 수 없습니다.");
     
-    const skipMetadata = new Set(["corrupted", "split", "fractured item", "shaper item", "elder item", "crusader item", "hunter item", "redeemer item", "warlord item", "synthesised item", "foil unique", "unmodifiable"]);
-    const results = [];
+    // 1. 현재 착용 중인 슬롯/주얼 소켓의 Item ID 수집 (유령 아이템 제거용)
+    const activeItemIds = new Set();
+    doc.querySelectorAll("Slot").forEach(slot => {
+        const itemId = slot.getAttribute("itemId");
+        if (itemId && itemId !== "0") activeItemIds.add(itemId);
+    });
+    doc.querySelectorAll("Socket").forEach(socket => {
+        const itemId = socket.getAttribute("itemId");
+        if (itemId && itemId !== "0") activeItemIds.add(itemId);
+    });
 
-    const items = itemsNode.querySelectorAll("Item");
-    items.forEach(itemNode => {
-        const text = itemNode.textContent.trim();
-        if (!text) return;
+    // 2. 장비(Items) 파싱
+    const itemsNode = doc.querySelector("Items");
+    const parsedItems = [];
+    if (itemsNode) {
+        const skipMetadata = new Set(["corrupted", "split", "fractured item", "shaper item", "elder item", "crusader item", "hunter item", "redeemer item", "warlord item", "synthesised item", "foil unique", "unmodifiable"]);
         
-        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-        
-        let rarity = "rare", name = "Unknown", base = "", startIdx = 0;
-        
-        if (lines[0].startsWith("Rarity:")) {
-            rarity = lines[0].split(":")[1].trim().toLowerCase();
-            name = lines[1] || "";
-            base = lines[2] || "";
-            startIdx = 3;
-        }
+        itemsNode.querySelectorAll("Item").forEach(itemNode => {
+            // [중요 필터] 현재 착용중인 ID 리스트에 없으면 스킵!
+            const id = itemNode.getAttribute("id");
+            if (!activeItemIds.has(id)) return;
 
-        const matchedMods = [];
-        let implicitCount = 0;
+            const text = itemNode.textContent.trim();
+            if (!text) return;
+            
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            let rarity = "rare", name = "Unknown", base = "", startIdx = 0;
+            
+            if (lines[0].startsWith("Rarity:")) {
+                rarity = lines[0].split(":")[1].trim().toLowerCase();
+                name = lines[1] || "";
+                base = lines[2] || "";
+                startIdx = 3;
+            }
 
-        for (let i = startIdx; i < lines.length; i++) {
-            const line = lines[i];
-            
-            if (line.startsWith("Implicits:")) {
-                implicitCount = parseInt(line.split(":")[1]) || 0;
-                continue;
+            const matchedMods = [];
+            let implicitCount = 0;
+
+            for (let i = startIdx; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.startsWith("Implicits:")) {
+                    implicitCount = parseInt(line.split(":")[1]) || 0;
+                    continue;
+                }
+                
+                const skipPrefixes = ["Item Level:", "Quality:", "Sockets:", "LevelReq:", "Unique ID:", "Variant:", "Selected Variant:", "League:", "Radius:", "Limited to:", "Foil Unique", "Prefix:", "Suffix:"];
+                if (skipPrefixes.some(p => line.startsWith(p))) continue;
+                if (line === name || line === base) continue;
+                
+                const cleanForSkip = line.replace(/\{[^}]+\}|\([^)]+\)/g, '').trim().toLowerCase();
+                if (skipMetadata.has(cleanForSkip)) continue;
+                if (cleanForSkip.startsWith("requires class") || cleanForSkip.startsWith("allocates") || cleanForSkip.startsWith("this jewel's socket") || cleanForSkip.startsWith("it and your class'")) continue;
+                
+                const isImplicit = implicitCount > 0;
+                if (isImplicit) implicitCount--;
+                
+                const parsed = parseItemLine(line, isImplicit);
+                
+                let statId = DB.get(`${parsed.normalized}::${parsed.type}`) || DB.get(`${parsed.normalized}::pseudo`);
+                if (statId) {
+                    matchedMods.push({ id: statId, values: parsed.values, original: parsed.cleanOriginal });
+                }
             }
-            
-            const skipPrefixes = ["Item Level:", "Quality:", "Sockets:", "LevelReq:", "Unique ID:", "Variant:", "Selected Variant:", "League:", "Radius:", "Limited to:", "Foil Unique", "Prefix:", "Suffix:"];
-            if (skipPrefixes.some(p => line.startsWith(p))) continue;
-            if (line === name || line === base) continue;
-            
-            const cleanForSkip = line.replace(/\{[^}]+\}|\([^)]+\)/g, '').trim().toLowerCase();
-            if (skipMetadata.has(cleanForSkip)) continue;
-            if (cleanForSkip.startsWith("requires class") || cleanForSkip.startsWith("allocates") || cleanForSkip.startsWith("this jewel's socket") || cleanForSkip.startsWith("it and your class'")) continue;
-            
-            const isImplicit = implicitCount > 0;
-            if (isImplicit) implicitCount--;
-            
-            const parsed = parseItemLine(line, isImplicit);
-            
-            let statId = DB.get(`${parsed.normalized}::${parsed.type}`);
-            if (!statId) {
-                statId = DB.get(`${parsed.normalized}::pseudo`);
-            }
-            
-            if (statId) {
-                matchedMods.push({ id: statId, values: parsed.values, original: parsed.cleanOriginal });
-            }
-        }
+            if (matchedMods.length > 0) parsedItems.push({ name, base, rarity, mods: matchedMods });
+        });
+    }
+
+    // 3. 스킬 젬(Skills) 추출
+    const uniqueGems = new Map();
+    doc.querySelectorAll("Skills Skill Gem").forEach(gem => {
+        const name = gem.getAttribute("nameSpec");
+        const level = parseInt(gem.getAttribute("level")) || 1;
+        const quality = parseInt(gem.getAttribute("quality")) || 0;
+        const enabled = gem.getAttribute("enabled") !== "false";
         
-        if (matchedMods.length > 0) {
-            results.push({ name, base, rarity, mods: matchedMods });
+        if (name && enabled) {
+            // 중복 젬 제거를 위해 식별키 생성
+            const key = `${name}_${level}_${quality}`;
+            if (!uniqueGems.has(key)) {
+                uniqueGems.set(key, { name, level, quality });
+            }
         }
     });
-    
-    return results;
+    const parsedGems = Array.from(uniqueGems.values());
+
+    return { items: parsedItems, gems: parsedGems };
 }
 
-// --- URL 빌더 ---
-function buildTradeUrl(item, league, useBuyout, pctLimit) {
+// --- 장비 URL 빌더 ---
+function buildItemUrl(item, league, useBuyout, pctLimit) {
     const statusOpt = useBuyout ? "securable" : "online";
     const query = {
         query: {
@@ -298,7 +335,6 @@ function buildTradeUrl(item, league, useBuyout, pctLimit) {
         const filterObj = { id: mod.id };
         if (mod.values && mod.values.length > 0 && mod.values[0] > 0) {
             const minVal = mod.values[0] * (pctLimit / 100);
-            // 정수로 떨어지게 반올림 처리
             filterObj.value = { min: Math.round(minVal * 10) / 10 }; 
         }
         query.query.stats[0].filters.push(filterObj);
@@ -308,11 +344,47 @@ function buildTradeUrl(item, league, useBuyout, pctLimit) {
     return `https://www.pathofexile.com/trade/search/${encodeURIComponent(league)}?q=${encodeURIComponent(jsonStr)}`;
 }
 
+// --- 젬 URL 빌더 ---
+function buildGemUrl(gem, league, useBuyout) {
+    const statusOpt = useBuyout ? "securable" : "online";
+    const query = {
+        query: {
+            status: { option: statusOpt },
+            type: gem.name,
+            stats: [{ type: "and", filters: [] }]
+        }
+    };
+    
+    const filters = {};
+    let hasFilter = false;
+    
+    // 젬 레벨 & 퀄리티 필터링
+    if (gem.level > 1) {
+        filters.gem_level = { min: gem.level };
+        hasFilter = true;
+    }
+    if (gem.quality > 0) {
+        filters.quality = { min: gem.quality };
+        hasFilter = true;
+    }
+    
+    if (hasFilter) {
+        query.query.filters = { misc_filters: { filters: filters } };
+    }
+    
+    const jsonStr = JSON.stringify(query);
+    return `https://www.pathofexile.com/trade/search/${encodeURIComponent(league)}?q=${encodeURIComponent(jsonStr)}`;
+}
+
 // --- 실행 트리거 ---
 document.getElementById('runBtn').addEventListener('click', async () => {
     const pobStr = document.getElementById('pobInput').value.trim();
     const logBox = document.getElementById('logMsg');
-    const grid = document.getElementById('resultGrid');
+    
+    const itemGrid = document.getElementById('resultGrid');
+    const gemGrid = document.getElementById('gemGrid');
+    const itemTitle = document.getElementById('itemTitle');
+    const gemTitle = document.getElementById('gemTitle');
     
     if (!pobStr) {
         logBox.textContent = "POB 코드를 입력해주세요.";
@@ -320,14 +392,15 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     }
     
     logBox.textContent = "데이터 분석 중...";
-    grid.innerHTML = "";
+    itemGrid.innerHTML = ""; gemGrid.innerHTML = "";
+    itemTitle.style.display = "none"; gemTitle.style.display = "none";
     
     try {
         const xml = await decodePOB(pobStr);
-        const parsedItems = analyzeItems(xml);
+        const parsedData = analyzePOBData(xml);
         
-        if (parsedItems.length === 0) {
-            logBox.textContent = "매칭된 아이템 옵션이 없습니다. (POB 코드를 다시 확인하세요)";
+        if (parsedData.items.length === 0 && parsedData.gems.length === 0) {
+            logBox.textContent = "매칭된 장착 아이템이나 스킬 젬이 없습니다.";
             return;
         }
         
@@ -335,35 +408,53 @@ document.getElementById('runBtn').addEventListener('click', async () => {
         const useBuyout = document.getElementById('buyoutCheck').checked;
         const pctLimit = parseInt(document.getElementById('minPct').value) || 80;
         
-        logBox.textContent = `성공적으로 ${parsedItems.length}개의 아이템을 분석했습니다.`;
+        logBox.textContent = `성공적으로 장비 ${parsedData.items.length}개와 스킬 젬 ${parsedData.gems.length}개를 분석했습니다.`;
         
-        let html = '';
-        parsedItems.forEach(item => {
-            const tradeUrl = buildTradeUrl(item, league, useBuyout, pctLimit);
-            
-            let modsHtml = '';
-            item.mods.forEach(m => {
-                modsHtml += `<div class="mod-line">${m.original}</div>`;
-            });
-            
-            html += `
-            <div class="item-card">
-                <div class="item-header">
-                    <div>
-                        <div class="item-title">${item.name}</div>
-                        <div class="item-base">${item.base}</div>
+        // 장비 렌더링
+        if (parsedData.items.length > 0) {
+            itemTitle.style.display = "block";
+            let html = '';
+            parsedData.items.forEach(item => {
+                const tradeUrl = buildItemUrl(item, league, useBuyout, pctLimit);
+                let modsHtml = '';
+                item.mods.forEach(m => { modsHtml += `<div class="mod-line">${m.original}</div>`; });
+                
+                html += `
+                <div class="item-card">
+                    <div class="item-header">
+                        <div>
+                            <div class="item-title">${item.name}</div>
+                            <div class="item-base">${item.base}</div>
+                        </div>
                     </div>
-                </div>
-                <div class="item-mods">
-                    ${modsHtml}
-                </div>
-                <a href="${tradeUrl}" target="_blank" class="btn-trade">
-                    실시간 거래소 검색
-                </a>
-            </div>`;
-        });
+                    <div class="item-mods">${modsHtml}</div>
+                    <a href="${tradeUrl}" target="_blank" class="btn-trade">실시간 거래소 검색</a>
+                </div>`;
+            });
+            itemGrid.innerHTML = html;
+        }
         
-        grid.innerHTML = html;
+        // 젬 렌더링
+        if (parsedData.gems.length > 0) {
+            gemTitle.style.display = "block";
+            let html = '';
+            parsedData.gems.forEach(gem => {
+                const tradeUrl = buildGemUrl(gem, league, useBuyout);
+                let statsHtml = '';
+                if (gem.level > 1) statsHtml += `<span>Lv.${gem.level}</span>`;
+                if (gem.quality > 0) statsHtml += `<span>Q${gem.quality}%</span>`;
+                
+                html += `
+                <div class="gem-card">
+                    <div class="gem-info">
+                        <div class="gem-name">${gem.name}</div>
+                        ${statsHtml ? `<div class="gem-stats">${statsHtml}</div>` : ''}
+                    </div>
+                    <a href="${tradeUrl}" target="_blank" class="btn-trade">검색</a>
+                </div>`;
+            });
+            gemGrid.innerHTML = html;
+        }
         
     } catch (e) {
         logBox.textContent = `오류 발생: ${e.message}`;
