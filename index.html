@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POB to Trade - Mirage Edition</title>
+<style>
+    :root {
+        --bg-main: #0f1115;
+        --bg-card: #181b21;
+        --border: #2a2e37;
+        --text-main: #e2e8f0;
+        --text-sub: #94a3b8;
+        --accent: #3b82f6;
+        --accent-hover: #2563eb;
+        --success: #10b981;
+        --error: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg-main); color: var(--text-main); line-height: 1.5; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 24px; font-weight: 600; margin-bottom: 20px; text-align: center; }
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 15px; color: #fff; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .control-panel { background: var(--bg-card); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
+    textarea { width: 100%; height: 100px; background: #000; border: 1px solid var(--border); color: #fff; padding: 12px; font-family: monospace; font-size: 13px; border-radius: 4px; resize: vertical; margin-bottom: 15px; }
+    .options { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; }
+    .options label { font-size: 14px; color: var(--text-sub); display: flex; align-items: center; gap: 6px; }
+    select, input[type="number"] { background: #000; border: 1px solid var(--border); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 14px; }
+    input[type="number"] { width: 70px; }
+    button { background: var(--accent); color: #fff; border: none; padding: 10px 24px; font-size: 15px; font-weight: 600; border-radius: 4px; cursor: pointer; transition: background 0.2s; width: 100%; }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { background: var(--text-sub); cursor: not-allowed; }
+    
+    .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-left: auto; }
+    .status-loading { background: #334155; color: #cbd5e1; }
+    .status-ok { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+    .status-err { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+    
+    .log-box { font-size: 13px; color: var(--text-sub); margin-bottom: 20px; text-align: center; }
+    
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; margin-bottom: 30px; }
+    
+    .item-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .slot-badge { background: #334155; color: #f8fafc; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; display: inline-block; align-self: flex-start; }
+    .item-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .item-title { font-size: 16px; font-weight: 600; color: #fbbf24; line-height: 1.3;}
+    .item-base { font-size: 13px; color: var(--text-sub); }
+    .item-mods { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .mod-line { color: #e2e8f0; display: flex; align-items: flex-start; gap: 6px; }
+    .mod-line::before { content: "✓"; color: var(--success); font-weight: bold; }
+    
+    .gem-group-title { font-size: 14px; font-weight: 600; color: #94a3b8; margin: 20px 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #334155; }
+    .gem-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+    .gem-info { display: flex; flex-direction: column; gap: 4px; }
+    .gem-name { font-size: 15px; font-weight: 600; color: #38bdf8; }
+    .gem-stats { font-size: 12px; color: var(--text-sub); display: flex; gap: 10px; }
+    
+    .btn-trade { display: inline-block; text-align: center; background: #252830; border: 1px solid #475569; color: #f8fafc; text-decoration: none; padding: 8px; border-radius: 4px; font-size: 13px; font-weight: 600; transition: all 0.2s; margin-top: 8px; }
+    .gem-card .btn-trade { margin-top: 0; padding: 6px 12px; }
+    .btn-trade:hover { background: #334155; border-color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>POB to Trade Generator (Mirage Edition)</h1>
+    
+    <div class="control-panel">
+        <div style="display: flex; align-items: center; margin-bottom: 15px;">
+            <span style="font-size: 14px; font-weight: 600;">데이터베이스 상태</span>
+            <span id="dbStatus" class="status-badge status-loading">APT 데이터 불러오는 중...</span>
+        </div>
+        
+        <textarea id="pobInput" placeholder="POB 코드를 붙여넣으세요 (eJy... 로 시작하는 코드)"></textarea>
+        
+        <div class="options">
+            <label>
+                리그: 
+                <select id="leagueSelect">
+                    <option value="Mirage" selected>Mirage</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Hardcore">Hardcore</option>
+                </select>
+            </label>
+            <label>
+                수치 최솟값: 
+                <input type="number" id="minPct" value="90" min="1" max="100"> %
+            </label>
+            <label>
+                <input type="checkbox" id="buyoutCheck" checked> 즉시 구매
+            </label>
+        </div>
+        
+        <button id="runBtn" disabled>분석 및 링크 생성</button>
+    </div>
+
+    <div id="logMsg" class="log-box"></div>
+    
+    <h2 id="itemTitle" style="display:none;">장착 중인 장비 & 주얼</h2>
+    <div id="resultGrid" class="grid"></div>
+    
+    <h2 id="gemTitle" style="display:none;">장착 중인 스킬 젬</h2>
+    <div id="gemContainer"></div>
+</div>
+
+<script>
+let DB = new Map();
+
+// 슬롯 정렬 우선순위 정의
+const SLOT_ORDER = {
+    "Weapon 1": 1, "Weapon 2": 2, "Weapon 1 Swap": 3, "Weapon 2 Swap": 4,
+    "Helmet": 5,
+    "Body Armour": 6,
+    "Gloves": 7,
+    "Boots": 8,
+    "Amulet": 9,
+    "Ring 1": 10, "Ring 2": 11,
+    "Belt": 12,
+    "Flask 1": 13, "Flask 2": 14, "Flask 3": 15, "Flask 4": 16, "Flask 5": 17,
+    "패시브 주얼": 18, "주얼": 19
+};
+
+const localDefenseMods = new Set([
+    "# to armour", "#% increased armour",
+    "# to evasion rating", "#% increased evasion rating",
+    "# to maximum energy shield", "#% increased energy shield",
+    "# to armour and evasion rating", "#% increased armour and evasion",
+    "# to armour and energy shield", "#% increased armour and energy shield",
+    "# to evasion rating and energy shield", "#% increased evasion and energy shield",
+    "# to armour, evasion rating and energy shield", "#% increased armour, evasion and energy shield",
+    "#% chance to block"
+]);
+
+function normalizeText(text) {
+    let t = text.replace(/\(\d+(?:\.\d+)?-\d+(?:\.\d+)?\)/g, '#');
+    t = t.replace(/\d+(?:\.\d+)?/g, '#');
+    t = t.toLowerCase();
+    t = t.replace(/\+#/g, '#').replace(/-#/g, '#');
+    return t.trim();
+}
+
+async function loadDB() {
+    const statusEl = document.getElementById('dbStatus');
+    const btn = document.getElementById('runBtn');
+    try {
+        const response = await fetch('apt_stats.json');
+        if (!response.ok) throw new Error('파일 로드 실패');
+        const text = await response.text();
+        const lines = text.split('\n');
+        let count = 0;
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                const item = JSON.parse(line);
+                const refText = item.ref;
+                const ids = item.trade?.ids || {};
+                if (refText && Object.keys(ids).length > 0) {
+                    const cleanText = normalizeText(refText);
+                    for (const [modType, idList] of Object.entries(ids)) {
+                        for (const statId of idList) {
+                            const key = `${cleanText}::${modType}`;
+                            if (!DB.has(key)) DB.set(key, []);
+                            if (!DB.get(key).includes(statId)) DB.get(key).push(statId);
+                            count++;
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+        statusEl.textContent = `✓ ${count.toLocaleString()}개 옵션 로드 완료`;
+        statusEl.className = 'status-badge status-ok';
+        btn.disabled = false;
+    } catch (error) {
+        statusEl.textContent = '❌ DB 로드 실패';
+        statusEl.className = 'status-badge status-err';
+    }
+}
+
+async function decodePOB(str) {
+    let b64 = str.trim().replace(/-/g, '+').replace(/_/g, '/');
+    const pad = (4 - b64.length % 4) % 4;
+    b64 += '='.repeat(pad);
+    const binaryStr = atob(b64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    const formats = ['deflate', 'deflate-raw', 'gzip'];
+    for (const fmt of formats) {
+        try {
+            const ds = new DecompressionStream(fmt);
+            const writer = ds.writable.getWriter();
+            writer.write(bytes);
+            writer.close();
+            const buffer = await new Response(ds.readable).arrayBuffer();
+            const xml = new TextDecoder().decode(buffer);
+            if (xml.includes('<PathOfBuilding')) return xml;
+        } catch (e) { continue; }
+    }
+    throw new Error("압축 해제 실패");
+}
+
+function parseItemLine(line, isImplicit) {
+    let modType = "explicit";
+    const lower = line.toLowerCase();
+    if (lower.includes("{crafted}")) modType = "crafted";
+    else if (lower.includes("{fractured}")) modType = "fractured";
+    else if (lower.includes("{enchant}")) modType = "enchant";
+    else if (lower.includes("(implicit)") || isImplicit) modType = "implicit";
+    
+    let cleanLine = line.replace(/\{[^}]+\}/g, '').replace(/\([A-Za-z\s]+\)/g, '').trim();
+    const cleanLower = cleanLine.toLowerCase();
+    if (cleanLower.startsWith("adds") && cleanLower.includes("passive skills")) modType = "enchant";
+    
+    const matches = cleanLine.match(/[+-]?\d+(?:\.\d+)?/g);
+    return { original: line, cleanOriginal: cleanLine, normalized: normalizeText(cleanLine), type: modType, values: matches ? matches.map(Number) : [] };
+}
+
+function extractMagicBase(fullName) {
+    const specificFlasks = [
+        "Divine Life Flask", "Eternal Life Flask", "Hallowed Life Flask", "Sanctified Life Flask", "Sacred Life Flask", "Colossal Life Flask", "Giant Life Flask", "Grand Life Flask", "Greater Life Flask", "Large Life Flask", "Medium Life Flask", "Small Life Flask",
+        "Divine Mana Flask", "Eternal Mana Flask", "Hallowed Mana Flask", "Sanctified Mana Flask", "Sacred Mana Flask", "Colossal Mana Flask", "Giant Mana Flask", "Grand Mana Flask", "Greater Mana Flask", "Large Mana Flask", "Medium Mana Flask", "Small Mana Flask",
+        "Hallowed Hybrid Flask", "Sacred Hybrid Flask", "Colossal Hybrid Flask", "Large Hybrid Flask", "Medium Hybrid Flask", "Small Hybrid Flask"
+    ];
+    for (const b of specificFlasks) { if (fullName.includes(b)) return b; }
+    const generalBases = [
+        "Quicksilver Flask", "Bismuth Flask", "Stibnite Flask", "Amethyst Flask", "Ruby Flask", "Sapphire Flask", "Topaz Flask", "Silver Flask", "Aquamarine Flask", "Basalt Flask", "Iron Flask", "Sulphur Flask", "Granite Flask", "Jade Flask", "Quartz Flask", "Diamond Flask", "Corundum Flask", "Gold Flask", "Tincture",
+        "Large Cluster Jewel", "Medium Cluster Jewel", "Small Cluster Jewel", "Crimson Jewel", "Cobalt Jewel", "Viridian Jewel", "Prismatic Jewel",
+        "Murderous Eye Jewel", "Searching Eye Jewel", "Ghastly Eye Jewel", "Hypnotic Eye Jewel"
+    ];
+    for (const b of generalBases) { if (fullName.includes(b)) return b; }
+    return fullName; 
+}
+
+function analyzePOBData(xmlString) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlString, "text/xml");
+    const activeItemMap = new Map();
+    const itemsNode = doc.querySelector("Items");
+    
+    if (itemsNode) {
+        const activeSetId = itemsNode.getAttribute("activeItemSet") || "1";
+        const activeSetNode = doc.querySelector(`ItemSet[id="${activeSetId}"]`) || itemsNode;
+        activeSetNode.querySelectorAll("Slot, Socket").forEach(s => {
+            const id = s.getAttribute("itemId");
+            const name = s.getAttribute("name");
+            if (id && id !== "0" && !name?.toLowerCase().includes("swap")) activeItemMap.set(id, name || "장착됨");
+        });
+    }
+
+    const treeNode = doc.querySelector("Tree");
+    if (treeNode) {
+        const specId = treeNode.getAttribute("activeSpec") || "1";
+        const specNode = doc.querySelector(`Tree Spec[id="${specId}"]`) || doc.querySelector("Tree Spec");
+        specNode?.querySelectorAll("Socket").forEach(s => {
+            const id = s.getAttribute("itemId");
+            if (id && id !== "0") activeItemMap.set(id, "패시브 주얼");
+        });
+    }
+
+    const parsedItems = [];
+    itemsNode?.querySelectorAll("Item").forEach(itemNode => {
+        const id = itemNode.getAttribute("id");
+        if (!activeItemMap.has(id)) return;
+
+        const text = itemNode.textContent.trim();
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        
+        let rarity = itemNode.getAttribute("rarity")?.toLowerCase();
+        let name = "";
+        let base = "";
+        let startIdx = 0;
+        let defenses = { ar: 0, ev: 0, es: 0, block: 0 };
+        let isArmor = false;
+        
+        for (let j = 0; j < lines.length; j++) {
+            let l = lines[j];
+            if (l.startsWith("Armour:")) { defenses.ar = parseInt(l.split(":")[1].replace(/\D/g, '')) || 0; isArmor = true; }
+            if (l.startsWith("Evasion Rating:") || l.startsWith("Evasion:")) { defenses.ev = parseInt(l.split(":")[1].replace(/\D/g, '')) || 0; isArmor = true; }
+            if (l.startsWith("Energy Shield:")) { defenses.es = parseInt(l.split(":")[1].replace(/\D/g, '')) || 0; isArmor = true; }
+            if (l.startsWith("Chance to Block:")) { defenses.block = parseInt(l.split(":")[1].replace(/\D/g, '')) || 0; isArmor = true; }
+        }
+
+        if (lines[0].startsWith("Rarity:")) {
+            if (!rarity) rarity = lines[0].split(":")[1].trim().toLowerCase();
+            if (rarity === "magic" || rarity === "normal") {
+                name = lines[1];
+                base = itemNode.getAttribute("base") || extractMagicBase(lines[1]);
+                startIdx = 1; 
+            } else {
+                name = lines[1];
+                base = lines[2] || itemNode.getAttribute("base") || "";
+                startIdx = 3;
+            }
+        } else {
+            rarity = rarity || "rare";
+            name = lines[0];
+            base = itemNode.getAttribute("base") || lines[0];
+        }
+
+        const matchedMods = [];
+        let implicitCount = 0;
+        for (let i = startIdx; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith("Implicits:")) { implicitCount = parseInt(line.split(":")[1]) || 0; continue; }
+            if (["Item Level:", "Quality:", "Sockets:", "LevelReq:", "Unique ID:", "Variant:", "Selected Variant:", "League:", "Radius:", "Limited to:", "Foil Unique", "Prefix:", "Suffix:", "Armour:", "Evasion Rating:", "Evasion:", "Energy Shield:", "Chance to Block:"].some(p => line.startsWith(p))) continue;
+            
+            const isImp = implicitCount > 0;
+            if (isImp) implicitCount--;
+            const parsed = parseItemLine(line, isImp);
+            if (isArmor && localDefenseMods.has(parsed.normalized)) continue; 
+            
+            let statIds = DB.get(`${parsed.normalized}::${parsed.type}`) || 
+                          DB.get(`${parsed.normalized} (local)::${parsed.type}`) || 
+                          DB.get(`${parsed.normalized}::pseudo`);
+            if (statIds) matchedMods.push({ ids: statIds, values: parsed.values, original: parsed.cleanOriginal });
+        }
+        parsedItems.push({ name, base, rarity, slot: activeItemMap.get(id), mods: matchedMods, defenses });
+    });
+
+    const gemGroups = new Map();
+    const skillsNode = doc.querySelector("Skills");
+    const activeSkillSetId = skillsNode?.getAttribute("activeSkillSet") || "1";
+    const skillSetNode = doc.querySelector(`SkillSet[id="${activeSkillSetId}"]`) || skillsNode;
+    skillSetNode?.querySelectorAll("Skill").forEach((s, idx) => {
+        const slot = s.getAttribute("slot");
+        if (slot?.toLowerCase().includes("swap")) return;
+        const gems = [];
+        s.querySelectorAll("Gem, Skill Gem").forEach(g => {
+            if (g.getAttribute("enabled") !== "false") {
+                gems.push({ name: g.getAttribute("nameSpec"), level: parseInt(g.getAttribute("level")) || 1, quality: parseInt(g.getAttribute("quality")) || 0 });
+            }
+        });
+        if (gems.length > 0) gemGroups.set(slot || s.getAttribute("label") || `그룹 ${idx+1}`, gems);
+    });
+    return { items: parsedItems, gemGroups: Array.from(gemGroups.entries()).map(([slot, gems]) => ({ slot, gems })) };
+}
+
+function buildTradeUrl(item, league, buyout, pct) {
+    let andFilters = [];
+    let countGroups = [];
+    item.mods.forEach(mod => {
+        if (mod.ids.length === 1) {
+            let f = { id: mod.ids[0] };
+            if (mod.values && mod.values.length > 0) f.value = { min: Math.round(mod.values[0] * (pct / 100) * 10) / 10 };
+            andFilters.push(f);
+        } else if (mod.ids.length > 1) {
+            countGroups.push({
+                type: "count",
+                value: { min: 1 },
+                filters: mod.ids.map(id => {
+                    let f = { id: id };
+                    if (mod.values && mod.values.length > 0) f.value = { min: Math.round(mod.values[0] * (pct / 100) * 10) / 10 };
+                    return f;
+                })
+            });
+        }
+    });
+
+    const query = { query: { status: { option: buyout ? "securable" : "online" }, stats: [{ type: "and", filters: andFilters }, ...countGroups] } };
+    if (item.defenses && (item.defenses.ar > 0 || item.defenses.ev > 0 || item.defenses.es > 0 || item.defenses.block > 0)) {
+        query.query.filters = { armour_filters: { filters: {} } };
+        if (item.defenses.ar > 0) query.query.filters.armour_filters.filters.ar = { min: Math.round(item.defenses.ar * (pct / 100)) };
+        if (item.defenses.ev > 0) query.query.filters.armour_filters.filters.ev = { min: Math.round(item.defenses.ev * (pct / 100)) };
+        if (item.defenses.es > 0) query.query.filters.armour_filters.filters.es = { min: Math.round(item.defenses.es * (pct / 100)) };
+        if (item.defenses.block > 0) query.query.filters.armour_filters.filters.block = { min: Math.round(item.defenses.block * (pct / 100)) };
+    }
+    const isFlask = item.base.toLowerCase().includes("flask");
+    const isNormalMagicFlask = isFlask && item.rarity !== "unique";
+    if (item.rarity === "unique" && !isNormalMagicFlask) {
+        query.query.name = item.name; query.query.type = item.base || item.name;
+    } else { query.query.type = item.base || item.name; }
+
+    return `https://www.pathofexile.com/trade/search/${encodeURIComponent(league)}?q=${encodeURIComponent(JSON.stringify(query))}`;
+}
+
+function buildGemUrl(gem, league, buyout) {
+    const query = { query: { status: { option: buyout ? "securable" : "online" }, type: gem.name, stats: [{ type: "and", filters: [] }] } };
+    const f = {};
+    if (gem.level > 1) f.gem_level = { min: gem.level };
+    if (gem.quality > 0) f.quality = { min: gem.quality };
+    if (Object.keys(f).length > 0) query.query.filters = { misc_filters: { filters: f } };
+    return `https://www.pathofexile.com/trade/search/${encodeURIComponent(league)}?q=${encodeURIComponent(JSON.stringify(query))}`;
+}
+
+document.getElementById('runBtn').addEventListener('click', async () => {
+    const input = document.getElementById('pobInput').value;
+    const grid = document.getElementById('resultGrid');
+    const container = document.getElementById('gemContainer');
+    try {
+        const xml = await decodePOB(input);
+        const data = analyzePOBData(xml);
+        const league = document.getElementById('leagueSelect').value;
+        const buyout = document.getElementById('buyoutCheck').checked;
+        const pct = parseInt(document.getElementById('minPct').value);
+
+        // 정렬 수행
+        data.items.sort((a, b) => (SLOT_ORDER[a.slot] || 99) - (SLOT_ORDER[b.slot] || 99));
+
+        document.getElementById('itemTitle').style.display = data.items.length ? 'block' : 'none';
+        grid.innerHTML = data.items.map(item => {
+            let defHtml = '';
+            if (item.defenses && (item.defenses.ar > 0 || item.defenses.ev > 0 || item.defenses.es > 0 || item.defenses.block > 0)) {
+                let d = [];
+                if (item.defenses.ar > 0) d.push(`🛡️ ${item.defenses.ar}`);
+                if (item.defenses.ev > 0) d.push(`💨 ${item.defenses.ev}`);
+                if (item.defenses.es > 0) d.push(`✨ ${item.defenses.es}`);
+                if (item.defenses.block > 0) d.push(`🛡️ ${item.defenses.block}%`);
+                defHtml = `<div style="font-size:12px; color:#38bdf8; background:rgba(56,189,248,0.1); padding:6px; border-radius:4px; margin-top:5px;">${d.join(' | ')}</div>`;
+            }
+            return `<div class="item-card"><span class="slot-badge">${item.slot}</span><div class="item-title">${item.name}</div><div class="item-base">${item.base}</div>${defHtml}<div class="item-mods">${item.mods.map(m => `<div class="mod-line">${m.original}</div>`).join('')}</div><a href="${buildTradeUrl(item, league, buyout, pct)}" target="_blank" class="btn-trade">거래소 검색</a></div>`;
+        }).join('');
+
+        document.getElementById('gemTitle').style.display = data.gemGroups.length ? 'block' : 'none';
+        container.innerHTML = data.gemGroups.map(g => `<div class="gem-group-title">${g.slot}</div><div class="grid">${g.gems.map(gem => `<div class="gem-card"><div class="gem-info"><div class="gem-name">${gem.name}</div><div class="gem-stats">Lv.${gem.level} Q${gem.quality}%</div></div><a href="${buildGemUrl(gem, league, buyout)}" target="_blank" class="btn-trade">검색</a></div>`).join('')}</div>`).join('');
+        document.getElementById('logMsg').textContent = "분석 완료!";
+    } catch (e) { document.getElementById('logMsg').textContent = "에러: " + e.message; }
+});
+loadDB();
+</script>
+</body>
+</html>
